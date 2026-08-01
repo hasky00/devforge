@@ -21,6 +21,8 @@ export function TerminalPanel() {
   const [running, setRunning] = useState(false);
   const [cwdHint, setCwdHint] = useState<string | null>(null);
   const [isCloud, setIsCloud] = useState(false);
+  const [tokenRequired, setTokenRequired] = useState(false);
+  const [terminalToken, setTerminalToken] = useState("");
   const [pendingDestructive, setPendingDestructive] = useState<string | null>(
     null
   );
@@ -38,9 +40,13 @@ export function TerminalPanel() {
       try {
         const res = await fetch("/api/terminal");
         if (!res.ok) return;
-        const data = (await res.json()) as { cloud?: boolean; mode?: string };
+        const data = (await res.json()) as {
+          mode?: string;
+          tokenRequired?: boolean;
+        };
         if (!cancelled) {
-          setIsCloud(Boolean(data.cloud || data.mode === "mock"));
+          setIsCloud(data.mode === "mock");
+          setTokenRequired(Boolean(data.tokenRequired));
         }
       } catch {
         // Hostname hint if API unavailable
@@ -72,13 +78,15 @@ export function TerminalPanel() {
           sessionId,
           rootName,
           files,
+          terminalToken: tokenRequired ? terminalToken : undefined,
           // Server chooses real (local) vs mock (Vercel/cloud)
         }),
       });
       const data = await res.json();
 
       if (data.cwd) setCwdHint(data.cwd);
-      if (data.cloud) setIsCloud(true);
+      if (data.tokenRequired != null) setTokenRequired(Boolean(data.tokenRequired));
+      if (data.mode === "mock") setIsCloud(true);
       if (data.mocked === false) setIsCloud(false);
 
       if (data.hardBlocked) {
@@ -189,11 +197,16 @@ export function TerminalPanel() {
             {isCloud ? (
               <>
                 <p>
-                  <strong className="text-warning">Cloud mock terminal.</strong>{" "}
-                  Vercel cannot run a host shell. Output is simulated and labeled.
-                  For a real shell, run{" "}
-                  <code className="text-text-muted">npm run dev</code> on your
-                  machine.
+                  <strong className="text-warning">Mock terminal.</strong>{" "}
+                  Set{" "}
+                  <code className="text-text-muted">
+                    DEVFORGE_TERMINAL_MODE=real
+                  </code>{" "}
+                  and{" "}
+                  <code className="text-text-muted">
+                    DEVFORGE_TERMINAL_TOKEN
+                  </code>{" "}
+                  on Vercel to enable protected ephemeral shell execution.
                 </p>
                 <p>
                   You can still try{" "}
@@ -210,10 +223,12 @@ export function TerminalPanel() {
             ) : (
               <>
                 <p>
-                  <strong className="text-success">Real local shell.</strong>{" "}
+                  <strong className="text-success">
+                    {tokenRequired ? "Real Vercel shell." : "Real local shell."}
+                  </strong>{" "}
                   Project files sync to{" "}
                   <code className="text-text-muted">.devforge-workspace/</code>{" "}
-                  then commands run with that directory as{" "}
+                  {tokenRequired ? "or Vercel /tmp, then commands run with that directory as " : "then commands run with that directory as "}
                   <code className="text-text-muted">cwd</code>.
                 </p>
                 <p>
@@ -297,34 +312,51 @@ export function TerminalPanel() {
       </div>
 
       <form
-        className="flex items-center gap-2 border-t border-border bg-surface p-2"
+        className="flex flex-col gap-2 border-t border-border bg-surface p-2"
         onSubmit={(e) => {
           e.preventDefault();
           void run(command);
         }}
       >
-        <span className="pl-1 font-mono text-sm text-accent">$</span>
-        <input
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-          className="flex-1 bg-transparent font-mono text-sm text-text outline-none placeholder:text-text-dim"
-          placeholder={
-            running
-              ? "Running…"
-              : "Enter command (real shell in project workspace)"
-          }
-          disabled={running}
-          spellCheck={false}
-        />
-        <Button
-          type="submit"
-          size="sm"
-          variant="primary"
-          disabled={running || !command.trim()}
-        >
-          <Play className="h-3.5 w-3.5" />
-          {running ? "…" : "Run"}
-        </Button>
+        {tokenRequired && (
+          <input
+            value={terminalToken}
+            onChange={(e) => setTerminalToken(e.target.value)}
+            className="w-full rounded-md border border-border bg-bg px-2 py-1 font-mono text-xs text-text outline-none placeholder:text-text-dim"
+            placeholder="Vercel terminal token"
+            type="password"
+            disabled={running}
+            spellCheck={false}
+          />
+        )}
+        <div className="flex items-center gap-2">
+          <span className="pl-1 font-mono text-sm text-accent">$</span>
+          <input
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            className="flex-1 bg-transparent font-mono text-sm text-text outline-none placeholder:text-text-dim"
+            placeholder={
+              running
+                ? "Running…"
+                : tokenRequired
+                  ? "Enter command (protected Vercel /tmp shell)"
+                  : "Enter command (real shell in project workspace)"
+            }
+            disabled={running}
+            spellCheck={false}
+          />
+          <Button
+            type="submit"
+            size="sm"
+            variant="primary"
+            disabled={
+              running || !command.trim() || (tokenRequired && !terminalToken)
+            }
+          >
+            <Play className="h-3.5 w-3.5" />
+            {running ? "…" : "Run"}
+          </Button>
+        </div>
       </form>
 
       <ConfirmDialog

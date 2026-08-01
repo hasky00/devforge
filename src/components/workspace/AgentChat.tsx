@@ -45,14 +45,11 @@ export function AgentChat() {
   const [showErrorBox, setShowErrorBox] = useState(mode === "debug");
   const [attachError, setAttachError] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const errorBoxVisible = showErrorBox || mode === "debug";
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isAgentLoading]);
-
-  useEffect(() => {
-    setShowErrorBox(mode === "debug");
-  }, [mode]);
 
   const send = async () => {
     const text = input.trim();
@@ -217,7 +214,7 @@ export function AgentChat() {
       </div>
 
       {/* Error log input */}
-      {(showErrorBox || attachError) && (
+      {(errorBoxVisible || attachError) && (
         <div className="border-t border-border px-3 py-2">
           <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-warning">
             <AlertTriangle className="h-3 w-3" />

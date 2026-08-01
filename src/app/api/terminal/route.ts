@@ -11,15 +11,44 @@ import { executeMockCommand } from "@/lib/terminal/mock-executor";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+type TerminalMode = "real" | "mock";
+
+function getTerminalMode(): TerminalMode {
+  const envMode = process.env.DEVFORGE_TERMINAL_MODE as
+    | TerminalMode
+    | undefined;
+  if (envMode === "mock") return "mock";
+  if (envMode === "real") return "real";
+  return isCloudRuntime() ? "mock" : "real";
+}
+
+function verifyCloudTerminalToken(req: Request, bodyToken?: string): boolean {
+  if (!isCloudRuntime()) return true;
+  const expected = process.env.DEVFORGE_TERMINAL_TOKEN;
+  if (!expected) return false;
+
+  const auth = req.headers.get("authorization");
+  const bearer = auth?.toLowerCase().startsWith("bearer ")
+    ? auth.slice("bearer ".length).trim()
+    : undefined;
+
+  return (bodyToken || bearer) === expected;
+}
+
 /** GET /api/terminal — report whether this host runs a real shell or cloud mock. */
 export async function GET() {
+  const mode = getTerminalMode();
   const cloud = isCloudRuntime();
   return NextResponse.json({
-    mode: cloud || process.env.DEVFORGE_TERMINAL_MODE === "mock" ? "mock" : "real",
+    mode,
     cloud,
-    notice: cloud
-      ? "Vercel serverless: terminal is simulated. Use local npm run dev for a real shell."
-      : "Local: commands run in .devforge-workspace/ with a real shell.",
+    tokenRequired: cloud && mode === "real",
+    notice:
+      mode === "mock"
+        ? "Vercel serverless: terminal is simulated. Set DEVFORGE_TERMINAL_MODE=real and DEVFORGE_TERMINAL_TOKEN to enable protected ephemeral shell execution."
+        : cloud
+          ? "Vercel: commands run in an ephemeral /tmp workspace after token verification. Files do not persist between function instances."
+          : "Local: commands run in .devforge-workspace/ with a real shell.",
   });
 }
 
@@ -29,8 +58,9 @@ type Body = {
   sessionId?: string;
   rootName?: string;
   files?: ProjectFile[];
-  /** Force mock (default: real local shell) */
-  mode?: "real" | "mock";
+  terminalToken?: string;
+  /** Optional mock override for demos. Real mode is controlled by server env. */
+  mode?: "mock";
 };
 
 /**
@@ -47,16 +77,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "command is required" }, { status: 400 });
     }
 
-    // Vercel/serverless: no durable local shell — use labeled mock.
-    // Local: real shell by default (override with DEVFORGE_TERMINAL_MODE=mock).
-    const mode: "real" | "mock" =
-      body.mode === "mock" ||
-      process.env.DEVFORGE_TERMINAL_MODE === "mock" ||
-      isCloudRuntime()
-        ? "mock"
-        : body.mode === "real"
-          ? "real"
-          : "real";
+    const mode = body.mode === "mock" ? "mock" : getTerminalMode();
 
     if (mode === "mock") {
       const analysis = analyzeCommand(command);
@@ -95,6 +116,7 @@ export async function POST(req: Request) {
       }
 
       return NextResponse.json({
+        mode,
         requiresConfirmation: result.requiresConfirmation,
         confirmationReason: result.confirmationReason,
         mocked: true,
@@ -107,6 +129,22 @@ export async function POST(req: Request) {
     }
 
     // --- Real terminal ---
+    if (!verifyCloudTerminalToken(req, body.terminalToken)) {
+      return NextResponse.json(
+        {
+          mode,
+          mocked: false,
+          hardBlocked: false,
+          entry: null,
+          error:
+            "Protected Vercel terminal requires DEVFORGE_TERMINAL_TOKEN.",
+          notice:
+            "Set DEVFORGE_TERMINAL_TOKEN in Vercel and enter the same token in the terminal panel.",
+        },
+        { status: 401 }
+      );
+    }
+
     const analysis = analyzeCommand(command);
     if (analysis.hardBlocked) {
       return NextResponse.json({
@@ -164,6 +202,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({
+      mode,
       requiresConfirmation: result.requiresConfirmation,
       confirmationReason: result.confirmationReason,
       hardBlocked: result.hardBlocked ?? false,
@@ -171,7 +210,9 @@ export async function POST(req: Request) {
       cwd,
       entry: result.entry,
       notice:
-        "REAL TERMINAL — commands run on this machine inside the DevForge workspace directory. Not a full OS sandbox.",
+        isCloudRuntime()
+          ? "REAL VERCEL TERMINAL — commands run in ephemeral /tmp storage after token verification. Not durable and not a full OS sandbox."
+          : "REAL TERMINAL — commands run on this machine inside the DevForge workspace directory. Not a full OS sandbox.",
     });
   } catch (err) {
     console.error("[api/terminal]", err);

@@ -11,7 +11,7 @@
 | **Project** | File tree — create, rename, delete (delete requires confirmation) |
 | **Editor** | Tabs, line numbers, save/copy, highlights lines changed by accepted patches |
 | **Agent chat** | Build · Debug · Review · Explain · Test modes |
-| **Terminal** | **Real local shell** — syncs project to `.devforge-workspace/`, runs with cwd locked there |
+| **Terminal** | **Real shell** — local uses `.devforge-workspace/`; Vercel can use protected ephemeral `/tmp` execution |
 | **Changes** | Unified diffs with Accept / Reject / Edit before applying |
 
 ### Agent modes
@@ -28,7 +28,7 @@
 - Placeholder secrets only (`your_api_key_here`)  
 - Does not claim command success unless output confirms it  
 - Mock agent is **clearly labeled** when no `XAI_API_KEY`
-- Terminal is **real by default** (local shell); set `DEVFORGE_TERMINAL_MODE=mock` to simulate
+- Terminal is **real by default** locally; on Vercel set `DEVFORGE_TERMINAL_MODE=real` and `DEVFORGE_TERMINAL_TOKEN` for protected ephemeral `/tmp` execution, or set `DEVFORGE_TERMINAL_MODE=mock` to simulate
 
 ## Quick start
 
@@ -52,6 +52,17 @@ XAI_MODEL=grok-4.5
 ```
 
 Without a key, the **local mock agent** answers with realistic, labeled responses (including a demo fix for the sample bug).
+
+### Vercel terminal mode
+
+Vercel does not provide a durable project filesystem. To run real commands there, DevForge syncs the browser project into ephemeral `/tmp` storage for each request. Enable it only for trusted users:
+
+```env
+DEVFORGE_TERMINAL_MODE=real
+DEVFORGE_TERMINAL_TOKEN=choose_a_long_random_token
+```
+
+Enter the same token in the terminal panel when prompted. Leave `DEVFORGE_TERMINAL_MODE` unset, or set it to `mock`, if you want public demo-safe simulated output.
 
 ## Sample project
 
@@ -77,14 +88,14 @@ Session state (files, chat, pending diffs) persists in `localStorage`.
 src/
   app/
     api/chat/          # SpaceXAI or mock agent
-    api/terminal/      # Mock sandboxed terminal
+    api/terminal/      # Real local/Vercel ephemeral terminal or mock terminal
   components/
     workspace/         # IDE panels
     ui/                # Button, Badge, ConfirmDialog
   lib/
     agent/             # System prompts, mock agent, change parsing
     project/           # Sample project, file-tree ops
-    terminal/          # Mock executor
+    terminal/          # Real executor, mock executor, safety checks, workspace sync
     tech-registry.ts   # Pluggable language/framework list
     types.ts           # Domain types
   store/
@@ -97,6 +108,7 @@ src/
 |-------------|----------------|
 | Isolated sandbox (Docker/Vercel Sandbox) | Swap `lib/terminal/real-executor.ts` spawn for a remote sandbox |
 | Mock terminal | `DEVFORGE_TERMINAL_MODE=mock` |
+| Protected Vercel terminal | `DEVFORGE_TERMINAL_MODE=real` + `DEVFORGE_TERMINAL_TOKEN` |
 | GitHub | New API routes; keep `ProjectFile` tree as the source of truth |
 | More languages | Add entries in `lib/tech-registry.ts` |
 | Multiple models | `XAI_MODEL` + adapter in `api/chat` |
