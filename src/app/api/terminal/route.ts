@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import type { ProjectFile } from "@/lib/types";
 import { analyzeCommand } from "@/lib/terminal/safety";
-import { syncProjectToDisk } from "@/lib/terminal/workspace-sync";
+import {
+  isCloudRuntime,
+  syncProjectToDisk,
+} from "@/lib/terminal/workspace-sync";
 import { executeRealCommand } from "@/lib/terminal/real-executor";
 import { executeMockCommand } from "@/lib/terminal/mock-executor";
 
@@ -32,9 +35,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "command is required" }, { status: 400 });
     }
 
-    const mode =
-      body.mode ||
-      (process.env.DEVFORGE_TERMINAL_MODE === "mock" ? "mock" : "real");
+    // Vercel/serverless: no durable local shell — use labeled mock.
+    // Local: real shell by default (override with DEVFORGE_TERMINAL_MODE=mock).
+    const mode: "real" | "mock" =
+      body.mode === "mock" ||
+      process.env.DEVFORGE_TERMINAL_MODE === "mock" ||
+      isCloudRuntime()
+        ? "mock"
+        : body.mode === "real"
+          ? "real"
+          : "real";
 
     if (mode === "mock") {
       const analysis = analyzeCommand(command);
@@ -59,12 +69,28 @@ export async function POST(req: Request) {
       const result = await executeMockCommand(command, {
         confirmed: body.confirmed,
       });
+      // Annotate cloud limitation on the entry
+      if (result.entry && isCloudRuntime()) {
+        result.entry.lines = [
+          {
+            id: `cloud-${Date.now()}`,
+            level: "warning",
+            text: "[CLOUD] Real shell is unavailable on Vercel. Showing simulated terminal output. Run locally for a real shell.",
+            timestamp: Date.now(),
+          },
+          ...result.entry.lines,
+        ];
+      }
+
       return NextResponse.json({
         requiresConfirmation: result.requiresConfirmation,
         confirmationReason: result.confirmationReason,
         mocked: true,
+        cloud: isCloudRuntime(),
         entry: result.entry,
-        notice: "MOCK TERMINAL — simulated output only.",
+        notice: isCloudRuntime()
+          ? "CLOUD TERMINAL — simulated on Vercel. Use local npm run dev for a real shell."
+          : "MOCK TERMINAL — simulated output only.",
       });
     }
 

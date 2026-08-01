@@ -11,7 +11,16 @@ import type { ProjectFile } from "../types";
 export function getWorkspaceRoot(): string {
   const custom = process.env.DEVFORGE_WORKSPACE_ROOT;
   if (custom) return path.resolve(custom);
+  // On Vercel, only /tmp is writable
+  if (process.env.VERCEL === "1") {
+    return path.join("/tmp", "devforge-workspace");
+  }
   return path.join(process.cwd(), ".devforge-workspace");
+}
+
+/** Real host shell is for local dev only; serverless has no durable shell. */
+export function isCloudRuntime(): boolean {
+  return process.env.VERCEL === "1" || process.env.AWS_LAMBDA_FUNCTION_NAME != null;
 }
 
 function sanitizeSegment(s: string): string {

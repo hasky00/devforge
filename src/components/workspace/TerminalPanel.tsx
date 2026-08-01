@@ -20,6 +20,7 @@ export function TerminalPanel() {
   const [command, setCommand] = useState("npm test");
   const [running, setRunning] = useState(false);
   const [cwdHint, setCwdHint] = useState<string | null>(null);
+  const [isCloud, setIsCloud] = useState(false);
   const [pendingDestructive, setPendingDestructive] = useState<string | null>(
     null
   );
@@ -44,12 +45,14 @@ export function TerminalPanel() {
           sessionId,
           rootName,
           files,
-          mode: "real",
+          // Server chooses real (local) vs mock (Vercel/cloud)
         }),
       });
       const data = await res.json();
 
       if (data.cwd) setCwdHint(data.cwd);
+      if (data.cloud) setIsCloud(true);
+      if (data.mocked === false) setIsCloud(false);
 
       if (data.hardBlocked) {
         pushTerminalEntry({
@@ -79,7 +82,10 @@ export function TerminalPanel() {
       }
 
       if (data.entry) {
-        pushTerminalEntry(data.entry as TerminalEntry);
+        const entry = data.entry as TerminalEntry;
+        if (entry.mocked || data.cloud) setIsCloud(true);
+        else setIsCloud(false);
+        pushTerminalEntry(entry);
       } else if (data.error) {
         pushTerminalEntry({
           id: crypto.randomUUID(),
@@ -130,7 +136,11 @@ export function TerminalPanel() {
           <span className="text-[11px] font-semibold uppercase tracking-wider text-text-dim">
             Terminal
           </span>
-          <Badge tone="success">Real</Badge>
+          {isCloud ? (
+            <Badge tone="warning">Cloud mock</Badge>
+          ) : (
+            <Badge tone="success">Real</Badge>
+          )}
           {cwdHint && (
             <span
               className="hidden truncate font-mono text-[10px] text-text-dim lg:inline max-w-[240px]"
