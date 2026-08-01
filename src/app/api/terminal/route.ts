@@ -11,6 +11,18 @@ import { executeMockCommand } from "@/lib/terminal/mock-executor";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+/** GET /api/terminal — report whether this host runs a real shell or cloud mock. */
+export async function GET() {
+  const cloud = isCloudRuntime();
+  return NextResponse.json({
+    mode: cloud || process.env.DEVFORGE_TERMINAL_MODE === "mock" ? "mock" : "real",
+    cloud,
+    notice: cloud
+      ? "Vercel serverless: terminal is simulated. Use local npm run dev for a real shell."
+      : "Local: commands run in .devforge-workspace/ with a real shell.",
+  });
+}
+
 type Body = {
   command?: string;
   confirmed?: boolean;

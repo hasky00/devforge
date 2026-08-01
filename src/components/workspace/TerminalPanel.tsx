@@ -31,6 +31,33 @@ export function TerminalPanel() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [terminal]);
 
+  // Detect real vs cloud mock as soon as the panel mounts (not only after Run)
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/terminal");
+        if (!res.ok) return;
+        const data = (await res.json()) as { cloud?: boolean; mode?: string };
+        if (!cancelled) {
+          setIsCloud(Boolean(data.cloud || data.mode === "mock"));
+        }
+      } catch {
+        // Hostname hint if API unavailable
+        if (
+          !cancelled &&
+          typeof window !== "undefined" &&
+          /\.vercel\.app$/i.test(window.location.hostname)
+        ) {
+          setIsCloud(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const run = async (cmd: string, confirmed = false) => {
     const trimmed = cmd.trim();
     if (!trimmed || running) return;
@@ -159,45 +186,71 @@ export function TerminalPanel() {
       <div className="flex-1 overflow-y-auto p-3 font-mono text-[12px]">
         {terminal.length === 0 && (
           <div className="space-y-2 text-text-dim">
-            <p>
-              Real local shell. Project files are synced to{" "}
-              <code className="text-text-muted">.devforge-workspace/</code>{" "}
-              then commands run with that directory as{" "}
-              <code className="text-text-muted">cwd</code>.
-            </p>
-            <p>
-              Try{" "}
-              <QuickCmd
-                label="npm install"
-                onClick={() => {
-                  setCommand("npm install");
-                  void run("npm install");
-                }}
-              />
-              ,{" "}
-              <QuickCmd
-                label="npm test"
-                onClick={() => {
-                  setCommand("npm test");
-                  void run("npm test");
-                }}
-              />
-              , or{" "}
-              <QuickCmd
-                label="ls -la"
-                onClick={() => {
-                  setCommand("ls -la");
-                  void run("ls -la");
-                }}
-              />
-              .
-            </p>
-            <p className="text-[11px]">
-              Success is only claimed when the process exits with code 0.
-              Long-running servers (e.g.{" "}
-              <code className="text-text-muted">npm run dev</code>) are stopped
-              after a short capture window.
-            </p>
+            {isCloud ? (
+              <>
+                <p>
+                  <strong className="text-warning">Cloud mock terminal.</strong>{" "}
+                  Vercel cannot run a host shell. Output is simulated and labeled.
+                  For a real shell, run{" "}
+                  <code className="text-text-muted">npm run dev</code> on your
+                  machine.
+                </p>
+                <p>
+                  You can still try{" "}
+                  <QuickCmd
+                    label="npm test"
+                    onClick={() => {
+                      setCommand("npm test");
+                      void run("npm test");
+                    }}
+                  />{" "}
+                  to see simulated results.
+                </p>
+              </>
+            ) : (
+              <>
+                <p>
+                  <strong className="text-success">Real local shell.</strong>{" "}
+                  Project files sync to{" "}
+                  <code className="text-text-muted">.devforge-workspace/</code>{" "}
+                  then commands run with that directory as{" "}
+                  <code className="text-text-muted">cwd</code>.
+                </p>
+                <p>
+                  Try{" "}
+                  <QuickCmd
+                    label="npm install"
+                    onClick={() => {
+                      setCommand("npm install");
+                      void run("npm install");
+                    }}
+                  />
+                  ,{" "}
+                  <QuickCmd
+                    label="npm test"
+                    onClick={() => {
+                      setCommand("npm test");
+                      void run("npm test");
+                    }}
+                  />
+                  , or{" "}
+                  <QuickCmd
+                    label="ls -la"
+                    onClick={() => {
+                      setCommand("ls -la");
+                      void run("ls -la");
+                    }}
+                  />
+                  .
+                </p>
+                <p className="text-[11px]">
+                  Success is only claimed when the process exits with code 0.
+                  Long-running servers (e.g.{" "}
+                  <code className="text-text-muted">npm run dev</code>) are
+                  stopped after a short capture window.
+                </p>
+              </>
+            )}
           </div>
         )}
         {terminal.map((entry) => (
