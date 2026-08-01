@@ -92,7 +92,7 @@ export async function executeRealCommand(options: {
 
   const lines: TerminalLine[] = [
     line("info", `[REAL] cwd: ${options.cwd}`),
-    line("info", `[REAL] shell: ${process.env.SHELL || "/bin/zsh"} · timeout ${timeoutMs}ms`),
+    line("info", `[REAL] shell: ${getShell()} · timeout ${timeoutMs}ms`),
   ];
 
   if (longRunning) {
@@ -168,7 +168,7 @@ function runShell(
   truncated: boolean;
 }> {
   return new Promise((resolve) => {
-    const shell = process.env.SHELL || "/bin/zsh";
+    const shell = getShell();
     const child = spawn(shell, ["-c", command], {
       cwd,
       env: {
@@ -256,4 +256,9 @@ function runShell(
       finish(code);
     });
   });
+}
+
+function getShell(): string {
+  if (process.env.SHELL) return process.env.SHELL;
+  return process.env.VERCEL === "1" ? "/bin/sh" : "/bin/zsh";
 }
