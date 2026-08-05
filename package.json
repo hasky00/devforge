@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ai-sdk/xai": "^4.0.25",
+    "@vercel/analytics": "^2.0.1",
     "ai": "^7.0.47",
     "clsx": "^2.1.1",
     "diff": "^9.0.0",
